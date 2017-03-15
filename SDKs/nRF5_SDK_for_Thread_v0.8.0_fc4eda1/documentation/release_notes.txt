@@ -1,0 +1,51 @@
+nRF5 SDK for Thread v0.8.0
+------------------------
+Release Date: Week 10, 2017
+  
+This release is an experimental release and should only be used to explore 
+and try out the Thread features available on the nRF52840 chip.
+
+Highlights:
+- Pre-built OpenThread stack: https://github.com/openthread/openthread
+- An example which demonstrates a minimal OpenThread application that 
+  enables user interaction through built-in CLI
+- Examples presenting interactions between different Thread roles: 
+  Full Thread Device (Thread Router/REED), 
+  Minimal Thread Device(Minimal End Device/Sleepy End Device),
+  using OpenThread's built-in CoAP protocol
+- An example which demonstrates how to run a secure Device Firmware Update 
+  (DFU) process over a Thread network
+- Demo Thread Border Router
+- wpantund (Wireless Network Interface Daemon for Low-Power Wireless SoCs) 
+  used as part of the Demo Thread Border Router solution: 
+  https://github.com/openthread/wpantund
+- A Network Co-Processor(NCP) application - nRF52840 serves as a connectivity
+  chip and communicates with wpantund present on the application processor
+- An example demonstrating interaction between nodes running OpenThread and 
+  a remote cloud service through the Demo Thread Border Router
+- An example demonstrating Thread native commissioning via NFC with use of 
+  OpenThread and Demo Thread Border Router
+- Thread Topology Monitor PC tool
+- Software components and application examples for MDK, peripherals, 
+  and NFC inherited from nRF5 SDK v.13.0.0
+
+  
+The following OpenThread commit has been used to generate pre-built Thread
+stack libraries and for testing and verification:
+- https://github.com/openthread/openthread/commit/de48acf
+
+The following OpenThread commit has been used to generate a patch:
+- https://github.com/NordicSemiconductor/openthread/commit/7c77739
+
+The following wpantund commit has been used as part of the Demo Thread 
+Border Router solution and for testing and verification:
+- https://github.com/openthread/wpantund/commit/7c07366
+
+The following wpantund commit has been used to generate a patch:
+- https://github.com/NordicSemiconductor/wpantund/commit/786606d
+
+The following toolchains have been used for testing and verification:
+- GCC: GCC ARM Embedded 4.9 2015q3
+
+Supported boards:
+- PCA10056

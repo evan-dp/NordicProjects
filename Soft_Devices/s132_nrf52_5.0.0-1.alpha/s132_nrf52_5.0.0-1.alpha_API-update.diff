@@ -1,0 +1,861 @@
+
+|-----------------------------------------------------------------------------|
+|  2 Mbps PHY Support                                                         |
+|-----------------------------------------------------------------------------|
+
+//|
+//| Bitfield for PHYs used by PHY commands and events below
+//|
+
++/**@defgroup BLE_GAP_PHYS GAP PHYs
++ * @{ */
++#define BLE_GAP_PHY_1MBPS                        0x01    /**< 1 Mbps PHY. */
++#define BLE_GAP_PHY_2MBPS                        0x02    /**< 2 Mbps PHY. */
++/**@} */
+
+//|
+//| Notifies that the PHY has been changed, this event will also be generated if a PHY update
+//| procedure is requested but the PHY is not changed as the peer does not prefer or support it.
+//|
+
+ /**@brief GAP Event IDs.
+enum BLE_GAP_EVTS
+{
+   BLE_GAP_EVT_SEC_REQUEST,                      /**< Security Request.                               \n See @ref ble_gap_evt_sec_request_t.          */
+   BLE_GAP_EVT_CONN_PARAM_UPDATE_REQUEST,        /**< Connection Parameter Update Request.            \n Reply with @ref sd_ble_gap_conn_param_update. \n See @ref ble_gap_evt_conn_param_update_request_t. */
+   BLE_GAP_EVT_SCAN_REQ_REPORT,                  /**< Scan request report.                            \n See @ref ble_gap_evt_scan_req_report_t.      */
++  BLE_GAP_EVT_PHY_UPDATE,                       /**< PHY have been updated                           \n See @ref ble_gap_evt_phy_update_t.           */
+ };
+
++/**@brief Event Structure for @ref BLE_GAP_EVT_PHY_UPDATE. */
++typedef struct
++{
++  uint8_t status;                               /**< Status of the procedure, see @ref BLE_HCI_STATUS_CODES */
++  uint8_t tx_phy;                               /**< TX PHY for this connection, see @ref BLE_GAP_PHYS. */
++  uint8_t rx_phy;                               /**< RX PHY for this connection, see @ref BLE_GAP_PHYS. */
++} ble_gap_evt_phy_update_t;
+
+/**@brief Event structure for @ref BLE_GAP_EVT_SEC_PARAMS_REQUEST. */
+typedef struct
+{
+     ble_gap_evt_conn_param_update_request_t   conn_param_update_request;    /**< Connection Parameter Update Parameters. */
+     ble_gap_evt_scan_req_report_t             scan_req_report;              /**< Scan Request Report Parameters. */
++    ble_gap_evt_phy_update_t                  phy_update;                   /**< PHY Update Parameters. */
+   } params;                                                                 /**< Event Parameters. */
+ } ble_gap_evt_t;
+
+//|
+//| Tell the SoftDevice which PHYs to prefer if a peer requests a PHY change.
+//| The application must ask the SoftDevice to prefer the 2 Mbps PHY in order to change to that if
+//| the peer initiates a PHY Update procedure.
+//|
+
+ /**@brief GAP Option IDs.
+enum BLE_GAP_OPTS
+{
+   BLE_GAP_OPT_COMPAT_MODE,                      /**< Compatibility mode. @ref ble_gap_opt_compat_mode_t */
+   BLE_GAP_OPT_AUTH_PAYLOAD_TIMEOUT,             /**< Set Authenticated payload timeout. @ref ble_gap_opt_auth_payload_timeout_t */
+   BLE_GAP_OPT_EXT_LEN,                          /**< Extended length packets. @ref ble_gap_opt_ext_len_t */
++  BLE_GAP_OPT_PREFERRED_PHYS_SET,               /**< Set the preferred PHYs for all new connections. @ref ble_gap_opt_preferred_phys_t */
+ };
+
++/**@brief Preferred PHY option
++ *
++ * @details This can be used with @ref sd_ble_opt_set to change the preferred PHYs. Before this function is called the PHYs
++ * for peer initiated PHY Update procedure is @ref BLE_GAP_PHY_1MBPS. If @ref ble_gap_opt_preferred_phys_t::tx_phys or
++ * @ref ble_gap_opt_preferred_phys_t::rx_phys is 0, then the stack will select PHYs based on the peer requirements on that specific direction.
++ *
++ * @note The preferred PHYs are only valid for newly created connections after this option is called. If the PHYs should be
++ * changed for an existing link the @ref sd_ble_gap_phy_request would have to be called, and that would try to update the
++ * PHYs for the given link.
++ *
++ * @note tx_phys and rx_phys are bitfields, to indicate multiple preferred PHYs for each direction they can be ORed together.
++ * @code
++ * tx_phys = BLE_GAP_PHY_1MBPS | BLE_GAP_PHY_2MBPS;
++ * rx_phys = BLE_GAP_PHY_1MBPS | BLE_GAP_PHY_2MBPS;
++ * @endcode
++ *
++ * @events
++ * @event{@ref BLE_GAP_EVT_PHY_UPDATE, Result of the PHY Update if initiated by peer.}
++ * @endevents
++ *
++ * @mscs
++ * @mmsc{@ref BLE_GAP_CENTRAL_PHY_REQUEST}
++ * @mmsc{@ref BLE_GAP_PERIPHERAL_PHY_REQUEST}
++ * @endmscs
++ *
++ * @retval ::NRF_SUCCESS Set successfully.
++ * @retval ::NRF_ERROR_INVALID_PARAM Invalid parameter(s) supplied.
++ */
++typedef struct
++{
++  uint8_t  tx_phys;     /**< Preferred transmit PHYs, see @ref BLE_GAP_PHYS. */
++  uint8_t  rx_phys;     /**< Preferred receive PHYs, see @ref BLE_GAP_PHYS. */
++} ble_gap_opt_preferred_phys_t;
+
+ /**@brief Option structure for GAP options. */
+ typedef union
+{
+   ble_gap_opt_auth_payload_timeout_t    auth_payload_timeout;      /**< Parameters for the authenticated payload timeout option.*/
++  ble_gap_opt_preferred_phys_t          preferred_phys;            /**< Parameters for the preferred PHYs option. */
+ } ble_gap_opt_t;
+
+//|
+//| PHY request command. Either the master or the slave must call this function
+//| for the PHY to be changed.
+//|
+
+enum BLE_GAP_SVCS
+{
+   SD_BLE_GAP_CONNECT,                           /**< Connect. */
+   SD_BLE_GAP_CONNECT_CANCEL,                    /**< Cancel ongoing connection procedure. */
+   SD_BLE_GAP_RSSI_GET,                          /**< Get the last RSSI sample. */
++  SD_BLE_GAP_PHY_REQUEST,                       /**< Initiate PHY Update procedure. */
+ };
+
++/**@brief Physical Layer configuration
++ * @note      tx_phys and rx_phys are bitfields, to indicate multiple preferred PHYs for each direction they can be ORed together.
++ * @code
++ * p_gap_phys->tx_phys = BLE_GAP_PHY_1MBPS | BLE_GAP_PHY_2MBPS;
++ * p_gap_phys->rx_phys = BLE_GAP_PHY_1MBPS | BLE_GAP_PHY_2MBPS;
++ * @endcode
++ *
++ */
++typedef struct
++{
++  uint8_t tx_phys;     /**< Preferred transmit PHYs, see @ref BLE_GAP_PHYS. */
++  uint8_t rx_phys;     /**< Preferred receive PHYs, see @ref BLE_GAP_PHYS. */
++} ble_gap_phys_t;
++
+
++
++/**@brief PHY Update Request
++ *
++ * @details   This function is used to request a new PHY configuration for a central or a peripheral connection. It will always generate a
++ *            @ref BLE_GAP_EVT_PHY_UPDATE event if successfully executed. If @ref ble_gap_phys_t::tx_phys or @ref ble_gap_phys_t::rx_phys
++ *            is 0, then the stack will select PHYs based on the peer requirements on that specific direction. If the peer does not support
++ *            the PHY Update procedure, then the resulting @ref BLE_GAP_EVT_PHY_UPDATE event will have a status different from
++ *            @ref BLE_HCI_STATUS_CODE_SUCCESS.
++ *
++ * @note      The requested PHYs does not have to be within the set of the preferred PHYs.
++ *
++ * @events
++ * @event{@ref BLE_GAP_EVT_PHY_UPDATE, Result of the PHY Update procedure procedure.}
++ * @endevents
++ *
++ * @mscs
++ * @mmsc{@ref BLE_GAP_CENTRAL_PHY_REQUEST}
++ * @mmsc{@ref BLE_GAP_PERIPHERAL_PHY_REQUEST}
++ * @endmscs
++ *
++ * @param[in] conn_handle   Connection handle to indicate the connection for which the PHY Update is requested.
++ * @param[in] p_gap_phys    Pointer to PHY structure.
++ *
++ * @retval ::NRF_SUCCESS Successfully requested a PHY Update.
++ * @retval ::NRF_ERROR_INVALID_ADDR Invalid pointer supplied.
++ * @retval ::BLE_ERROR_INVALID_CONN_HANDLE Invalid connection handle supplied.
++ * @retval ::NRF_ERROR_INVALID_PARAM Unsupported PHYs supplied to the call.
++ * @retval ::NRF_ERROR_INVALID_STATE Invalid state to perform operation.
++ * @retval ::NRF_ERROR_BUSY Procedure is already in progress or not allowed at this time. Process pending events and wait for the pending procedure to complete and retry.
++ *
++ */
++SVCALL(SD_BLE_GAP_PHY_REQUEST, uint32_t, sd_ble_gap_phy_request(uint16_t conn_handle, ble_gap_phys_t const *p_gap_phys));
++
+
+
+|-----------------------------------------------------------------------------|
+|  Misc                                                                       |
+|-----------------------------------------------------------------------------|
+
+//|
+//| Some defines are renamed to make the API more consistent:
+//| GATT_MTU_SIZE_DEFAULT renamed to BLE_GATT_MTU_SIZE_DEFAULT
+//| BLE_EVTS_LEN_MAX renamed to BLE_EVT_LEN_MAX
+//| BLE_EVTS_PTR_ALIGNMENT renamed to BLE_EVT_PTR_ALIGNMENT
+//|
+
+ /** @brief Default MTU size, in bytes. */
+-#define GATT_MTU_SIZE_DEFAULT 23
++#define BLE_GATT_MTU_SIZE_DEFAULT 23
+
+
+ /** @brief  Required pointer alignment for BLE Events.
+ */
+-#define BLE_EVTS_PTR_ALIGNMENT    4
++#define BLE_EVT_PTR_ALIGNMENT    4
+
+
++
++/** @brief  Leaves the maximum of the two arguments.
++*/
++#define BLE_MAX(a, b) ((a) < (b) ? (b) : (a))
+
+ /** @brief  Maximum possible length for BLE Events.
+  * @note Value of @ref ble_gatt_enable_params_t::att_mtu shall be used as a parameter.
+- * If that value is set to 0 then @ref GATT_MTU_SIZE_DEFAULT must be used instead.
++ * If that value is set to 0 then @ref BLE_GATT_MTU_SIZE_DEFAULT must be used instead.
+ */
+-#define BLE_EVTS_LEN_MAX(ATT_MTU) (MAX( \
++#define BLE_EVT_LEN_MAX(ATT_MTU) (BLE_MAX( \
+   sizeof(ble_evt_t), \
+-  MAX( \
++  BLE_MAX( \
+     offsetof(ble_evt_t, evt.gattc_evt.params.rel_disc_rsp.includes) + ((ATT_MTU) - 2) / 6 * sizeof(ble_gattc_include_t), \
+     offsetof(ble_evt_t, evt.gattc_evt.params.attr_info_disc_rsp.info.attr_info16) + ((ATT_MTU) - 2) / 4 * sizeof(ble_gattc_attr_info16_t) \
+   ) \
+
+
+ /**@brief Get an event from the pending events queue.
+  *
+  * @param[out] p_dest Pointer to buffer to be filled in with an event, or NULL to retrieve the event length.
+- *                    This buffer <b>must be aligned to the extend defined by @ref BLE_EVTS_PTR_ALIGNMENT</b>.
++ *                    This buffer <b>must be aligned to the extend defined by @ref BLE_EVT_PTR_ALIGNMENT</b>.
++ *                    The buffer should be interpreted as a @ref ble_evt_t struct.
+  * @param[in, out] p_len Pointer the length of the buffer, on return it is filled with the event length.
+  *
+  * @details This call allows the application to pull a BLE event from the BLE stack. The application is signaled that
+
+  * Interrupt Service Routine that maps to SD_EVT_IRQn. In any case however, and because the BLE stack runs at a higher
+  * priority than the application, this function should be called in a loop (until @ref NRF_ERROR_NOT_FOUND is returned)
+  * every time SD_EVT_IRQn is raised to ensure that all available events are pulled from the BLE stack. Failure to do so
+- * could potentially leave events in the internal queue without the application being aware of this fact. Sizing the
+- * p_dest buffer is equally important, since the application needs to provide all the memory necessary for the event to
++ * could potentially leave events in the internal queue without the application being aware of this fact.
++ *
++ * Sizing the p_dest buffer is equally important, since the application needs to provide all the memory necessary for the event to
+  * be copied into application memory. If the buffer provided is not large enough to fit the entire contents of the event,
+  * @ref NRF_ERROR_DATA_SIZE will be returned and the application can then call again with a larger buffer size.
+- * The maximum possible event length is defined by @ref BLE_EVTS_LEN_MAX. The application may also "peek" the event length
++ * The maximum possible event length is defined by @ref BLE_EVT_LEN_MAX. The application may also "peek" the event length
+  * by providing p_dest as a NULL pointer and inspecting the value of *p_len upon return:
+  *
+  *     \code
+
+ /** @brief Keys that can be exchanged during a bonding procedure. */
+ typedef struct
+ {
+   uint8_t               lesc      : 1;             /**< Enable LE Secure Connection pairing. */
+   uint8_t               keypress  : 1;             /**< Enable generation of keypress notifications. */
+   uint8_t               io_caps   : 3;             /**< IO capabilities, see @ref BLE_GAP_IO_CAPS. */
+-  uint8_t               oob       : 1;             /**< Out Of Band data available. */
++  uint8_t               oob       : 1;             /**< The OOB data flag.
++                                                        - In LE legacy pairing, this flag is set if a device has out of band authentication data.
++                                                          The OOB method is used if both of the devices have out of band authentication data.
++                                                        - In LE Secure Connections pairing, this flag is set if a device has the peer device's out of band authentication data.
++                                                          The OOB method is used if at least one device has the peer device's OOB data available. */
+   uint8_t               min_key_size;              /**< Minimum encryption key size in octets between 7 and 16. If 0 then not applicable in this instance. */
+   uint8_t               max_key_size;              /**< Maximum encryption key size in octets between min_key_size and 16. */
+   ble_gap_sec_kdist_t   kdist_own;                 /**< Key distribution bitmap: keys that the local device will distribute. */
+   ble_gap_conn_params_t conn_params;            /**<  GAP Connection Parameters. */
+ } ble_gap_evt_conn_param_update_t;
+
+
+ /**@brief Provide the OOB data sent/received out of band.
+  *
+- * @note At least one of the 2 pointers provided must be different from NULL.
+  * @note An authentication procedure with OOB selected as an algorithm must be in progress when calling this function.
+  * @note A @ref BLE_GAP_EVT_LESC_DHKEY_REQUEST event with the oobd_req set to 1 must have been received prior to calling this function.
+  *
+
+  * @endmscs
+  *
+  * @param[in] conn_handle Connection handle.
+- * @param[in] p_oobd_own The OOB data sent out of band to a peer or NULL if none sent.
++ * @param[in] p_oobd_own The OOB data sent out of band to a peer or NULL if the peer has not received OOB data.
++ *                       Must correspond to @ref ble_gap_sec_params_t::oob flag in @ref BLE_GAP_EVT_SEC_PARAMS_REQUEST.
+  * @param[in] p_oobd_peer The OOB data received out of band from a peer or NULL if none received.
++ *                        Must correspond to @ref ble_gap_sec_params_t::oob flag in @ref sd_ble_gap_authenticate in the central role
++ *                        or @ref sd_ble_gap_sec_params_reply in the peripheral role.
+  *
+  * @retval ::NRF_SUCCESS OOB data accepted.
+  * @retval ::NRF_ERROR_INVALID_ADDR Invalid pointer supplied.
+
+
+
+ typedef struct
+ {
+   uint16_t  att_mtu;          /**< Maximum size of ATT packet the SoftDevice can send or receive.
+-                                   If it is 0 then @ref GATT_MTU_SIZE_DEFAULT will be used.
+-                                   Otherwise @ref GATT_MTU_SIZE_DEFAULT is the minimum value.
++                                   If it is 0 then @ref BLE_GATT_MTU_SIZE_DEFAULT will be used.
++                                   Otherwise @ref BLE_GATT_MTU_SIZE_DEFAULT is the minimum value.
+                                    @mscs
+                                    @mmsc{@ref BLE_GATTC_MTU_EXCHANGE}
+                                    @mmsc{@ref BLE_GATTS_MTU_EXCHANGE}
+
+ #include "ble_ranges.h"
+ #include "nrf_svc.h"
+ #include "nrf_error.h"
++#include "nrf.h"
+
+ #ifdef __cplusplus
+ extern "C" {
+
+  *          - The Client RX MTU value, and
+  *          - The Server RX MTU value from @ref BLE_GATTC_EVT_EXCHANGE_MTU_RSP.
+  *
+- *          However, the SoftDevice never sets ATT_MTU lower than @ref GATT_MTU_SIZE_DEFAULT.
++ *          However, the SoftDevice never sets ATT_MTU lower than @ref BLE_GATT_MTU_SIZE_DEFAULT.
+  *
+  * @events
+  * @event{@ref BLE_GATTC_EVT_EXCHANGE_MTU_RSP}
+
+  *
+  * @param[in] conn_handle    The connection handle identifying the connection to perform this procedure on.
+  * @param[in] client_rx_mtu  Client RX MTU size.
+- *                           - The minimum value is @ref GATT_MTU_SIZE_DEFAULT.
++ *                           - The minimum value is @ref BLE_GATT_MTU_SIZE_DEFAULT.
+  *                           - The maximum value is @ref ble_gatt_enable_params_t::att_mtu.
+  *                           - The value must be equal to Server RX MTU size given in @ref sd_ble_gatts_exchange_mtu_reply
+  *                             if an ATT_MTU exchange has already been performed in the other direction.
+
+  * @retval ::NRF_SUCCESS Successfully retrieved the next Handle-Value pair.
+  * @retval ::NRF_ERROR_NOT_FOUND No more Handle-Value pairs available in the list.
+  */
+-static inline uint32_t sd_ble_gattc_evt_char_val_by_uuid_read_rsp_iter(ble_gattc_evt_t *p_gattc_evt, ble_gattc_handle_value_t *p_iter)
++__STATIC_INLINE uint32_t sd_ble_gattc_evt_char_val_by_uuid_read_rsp_iter(ble_gattc_evt_t *p_gattc_evt, ble_gattc_handle_value_t *p_iter);
++
++/** @} */
++
++#ifndef SUPPRESS_INLINE_IMPLEMENTATION
++
++__STATIC_INLINE uint32_t sd_ble_gattc_evt_char_val_by_uuid_read_rsp_iter(ble_gattc_evt_t *p_gattc_evt, ble_gattc_handle_value_t *p_iter)
+ {
+   uint32_t value_len = p_gattc_evt->params.char_val_by_uuid_read_rsp.value_len;
+   uint8_t *p_first = p_gattc_evt->params.char_val_by_uuid_read_rsp.handle_value;
+
+   }
+ }
+
+-/** @} */
++#endif /* SUPPRESS_INLINE_IMPLEMENTATION */
+
+ #ifdef __cplusplus
+ }
+
+  * @mmsc{@ref BLE_GATTS_QUEUED_WRITE_NOBUF_NOAUTH_MSC}
+  * @endmscs
+  *
+- * @param[in] conn_handle  Connection handle. If the value does not belong to a system attribute then @ref BLE_CONN_HANDLE_INVALID can be used.
++ * @param[in] conn_handle  Connection handle. Ignored if the value does not belong to a system attribute.
+  * @param[in] handle       Attribute handle.
+  * @param[in,out] p_value  Attribute value information.
+  *
+
+  * @retval ::NRF_ERROR_NOT_FOUND Attribute not found.
+  * @retval ::NRF_ERROR_FORBIDDEN Forbidden handle supplied, certain attributes are not modifiable by the application.
+  * @retval ::NRF_ERROR_DATA_SIZE Invalid data size(s) supplied, attribute lengths are restricted by @ref BLE_GATTS_ATTR_LENS_MAX.
+- * @retval ::BLE_ERROR_INVALID_CONN_HANDLE Invalid connection handle supplied.
+- * @retval ::BLE_ERROR_GATTS_INVALID_ATTR_TYPE @ref BLE_CONN_HANDLE_INVALID supplied on a system attribute.
++ * @retval ::BLE_ERROR_INVALID_CONN_HANDLE Invalid connection handle supplied on a system attribute.
+  */
+ SVCALL(SD_BLE_GATTS_VALUE_SET, uint32_t, sd_ble_gatts_value_set(uint16_t conn_handle, uint16_t handle, ble_gatts_value_t *p_value));
+
+  *                       may refer to an already disconnected connection. Refer to the documentation of
+  *                       @ref sd_ble_gatts_sys_attr_get for further information.
+  *
+- * @param[in] conn_handle  Connection handle. If the value does not belong to a system attribute then @ref BLE_CONN_HANDLE_INVALID can be used.
++ * @param[in] conn_handle  Connection handle. Ignored if the value does not belong to a system attribute.
+  * @param[in] handle       Attribute handle.
+  * @param[in,out] p_value  Attribute value information.
+  *
+
+  * @retval ::NRF_ERROR_INVALID_ADDR Invalid pointer supplied.
+  * @retval ::NRF_ERROR_NOT_FOUND Attribute not found.
+  * @retval ::NRF_ERROR_INVALID_PARAM Invalid attribute offset supplied.
+- * @retval ::BLE_ERROR_INVALID_CONN_HANDLE Invalid connection handle supplied.
+- * @retval ::BLE_ERROR_GATTS_INVALID_ATTR_TYPE @ref BLE_CONN_HANDLE_INVALID supplied on a system attribute.
++ * @retval ::BLE_ERROR_INVALID_CONN_HANDLE Invalid connection handle supplied on a system attribute.
+  * @retval ::BLE_ERROR_GATTS_SYS_ATTR_MISSING System attributes missing, use @ref sd_ble_gatts_sys_attr_set to set them to a known value.
+  */
+ SVCALL(SD_BLE_GATTS_VALUE_GET, uint32_t, sd_ble_gatts_value_get(uint16_t conn_handle, uint16_t handle, ble_gatts_value_t *p_value));
+
+  *          - The Client RX MTU value from @ref BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST, and
+  *          - The Server RX MTU value.
+  *
+- *          However, the SoftDevice never sets ATT_MTU lower than @ref GATT_MTU_SIZE_DEFAULT.
++ *          However, the SoftDevice never sets ATT_MTU lower than @ref BLE_GATT_MTU_SIZE_DEFAULT.
+  *
+  * @events
+  * @event{@ref BLE_EVT_DATA_LENGTH_CHANGED, Generated if a data length update procedure is performed after the ATT_MTU exchange.}
+
+  *
+  * @param[in] conn_handle    The connection handle identifying the connection to perform this procedure on.
+  * @param[in] server_rx_mtu  Server RX MTU size.
+- *                           - The minimum value is @ref GATT_MTU_SIZE_DEFAULT.
++ *                           - The minimum value is @ref BLE_GATT_MTU_SIZE_DEFAULT.
+  *                           - The maximum value is @ref ble_gatt_enable_params_t::att_mtu.
+  *                           - The value must be equal to Client RX MTU size given in @ref sd_ble_gattc_exchange_mtu_request
+  *                             if an ATT_MTU exchange has already been performed in the other direction.
+
+
+ 0x21 Role Change Not Allowed
+ */
+ #define BLE_HCI_STATUS_CODE_LMP_RESPONSE_TIMEOUT       0x22       /**< LMP Response Timeout. */
+-/*0x23 LMP Error Transaction Collision*/
++#define BLE_HCI_STATUS_CODE_LMP_ERROR_TRANSACTION_COLLISION 0x23  /**< LMP Error Transaction Collision/LL Procedure Collision. */
+ #define BLE_HCI_STATUS_CODE_LMP_PDU_NOT_ALLOWED        0x24       /**< LMP PDU Not Allowed. */
+ /*0x25 Encryption Mode Not Acceptable
+ 0x26 Link Key Can Not be Changed
+
+//|
+//| Code rewritten to be compatible with more compilers
+//|
+
+  *
+  * @retval  The value of PRIMASK prior to disabling the interrupts.
+  */
+-static inline int __sd_nvic_irq_disable(void)
++__STATIC_INLINE int __sd_nvic_irq_disable(void);
++
++/**@brief Enables IRQ interrupts globally, including the SoftDevice's interrupts.
++ */
++__STATIC_INLINE void __sd_nvic_irq_enable(void);
++
++/**@brief Checks if IRQn is available to application
++ * @param[in]  IRQn  irq to check
++ *
++ * @retval  1 (true) if the irq to check is available to the application
++ */
++__STATIC_INLINE uint32_t __sd_nvic_app_accessible_irq(IRQn_Type IRQn);
++
++/**@brief Checks if priority is available to application
++ * @param[in]  priority  priority to check
++ *
++ * @retval  1 (true) if the priority to check is available to the application
++ */
++__STATIC_INLINE uint32_t __sd_nvic_is_app_accessible_priority(uint32_t priority);
++
++/**@} */
++
++/**@addtogroup NRF_NVIC_FUNCTIONS SoftDevice NVIC public functions
++ * @{ */
++
++/**@brief Enable External Interrupt.
++ * @note Corresponds to NVIC_EnableIRQ in CMSIS.
++ *
++ * @pre IRQn is valid and not reserved by the stack.
++ *
++ * @param[in] IRQn See the NVIC_EnableIRQ documentation in CMSIS.
++ *
++ * @retval ::NRF_SUCCESS The interrupt was enabled.
++ * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE The interrupt is not available for the application.
++ * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_PRIORITY_NOT_ALLOWED The interrupt has a priority not available for the application.
++ */
++__STATIC_INLINE uint32_t sd_nvic_EnableIRQ(IRQn_Type IRQn);
++
++/**@brief  Disable External Interrupt.
++ * @note Corresponds to NVIC_DisableIRQ in CMSIS.
++ *
++ * @pre IRQn is valid and not reserved by the stack.
++ *
++ * @param[in] IRQn See the NVIC_DisableIRQ documentation in CMSIS.
++ *
++ * @retval ::NRF_SUCCESS The interrupt was disabled.
++ * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE The interrupt is not available for the application.
++ */
++__STATIC_INLINE uint32_t sd_nvic_DisableIRQ(IRQn_Type IRQn);
++
++/**@brief  Get Pending Interrupt.
++ * @note Corresponds to NVIC_GetPendingIRQ in CMSIS.
++ *
++ * @pre IRQn is valid and not reserved by the stack.
++ *
++ * @param[in]   IRQn          See the NVIC_GetPendingIRQ documentation in CMSIS.
++ * @param[out]  p_pending_irq Return value from NVIC_GetPendingIRQ.
++ *
++ * @retval ::NRF_SUCCESS The interrupt is available for the application.
++ * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE IRQn is not available for the application.
++ */
++__STATIC_INLINE uint32_t sd_nvic_GetPendingIRQ(IRQn_Type IRQn, uint32_t * p_pending_irq);
++
++/**@brief  Set Pending Interrupt.
++ * @note Corresponds to NVIC_SetPendingIRQ in CMSIS.
++ *
++ * @pre IRQn is valid and not reserved by the stack.
++ *
++ * @param[in] IRQn See the NVIC_SetPendingIRQ documentation in CMSIS.
++ *
++ * @retval ::NRF_SUCCESS The interrupt is set pending.
++ * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE IRQn is not available for the application.
++ */
++__STATIC_INLINE uint32_t sd_nvic_SetPendingIRQ(IRQn_Type IRQn);
++
++/**@brief  Clear Pending Interrupt.
++ * @note Corresponds to NVIC_ClearPendingIRQ in CMSIS.
++ *
++ * @pre IRQn is valid and not reserved by the stack.
++ *
++ * @param[in] IRQn See the NVIC_ClearPendingIRQ documentation in CMSIS.
++ *
++ * @retval ::NRF_SUCCESS The interrupt pending flag is cleared.
++ * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE IRQn is not available for the application.
++ */
++__STATIC_INLINE uint32_t sd_nvic_ClearPendingIRQ(IRQn_Type IRQn);
++
++/**@brief Set Interrupt Priority.
++ * @note Corresponds to NVIC_SetPriority in CMSIS.
++ *
++ * @pre IRQn is valid and not reserved by the stack.
++ * @pre Priority is valid and not reserved by the stack.
++ *
++ * @param[in] IRQn      See the NVIC_SetPriority documentation in CMSIS.
++ * @param[in] priority  A valid IRQ priority for use by the application.
++ *
++ * @retval ::NRF_SUCCESS The interrupt and priority level is available for the application.
++ * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE IRQn is not available for the application.
++ * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_PRIORITY_NOT_ALLOWED The interrupt priority is not available for the application.
++ */
++__STATIC_INLINE uint32_t sd_nvic_SetPriority(IRQn_Type IRQn, uint32_t priority);
++
++/**@brief Get Interrupt Priority.
++ * @note Corresponds to NVIC_GetPriority in CMSIS.
++ *
++ * @pre IRQn is valid and not reserved by the stack.
++ *
++ * @param[in]  IRQn         See the NVIC_GetPriority documentation in CMSIS.
++ * @param[out] p_priority   Return value from NVIC_GetPriority.
++ *
++ * @retval ::NRF_SUCCESS The interrupt priority is returned in p_priority.
++ * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE - IRQn is not available for the application.
++ */
++__STATIC_INLINE uint32_t sd_nvic_GetPriority(IRQn_Type IRQn, uint32_t * p_priority);
++
++/**@brief System Reset.
++ * @note Corresponds to NVIC_SystemReset in CMSIS.
++ *
++ * @retval ::NRF_ERROR_SOC_NVIC_SHOULD_NOT_RETURN
++ */
++__STATIC_INLINE uint32_t sd_nvic_SystemReset(void);
++
++/**@brief Enter critical region.
++ *
++ * @post Application interrupts will be disabled.
++ * @note sd_nvic_critical_region_enter() and ::sd_nvic_critical_region_exit() must be called in matching pairs inside each
++ * execution context
++ * @sa sd_nvic_critical_region_exit
++ *
++ * @param[out] p_is_nested_critical_region If 1, the application is now in a nested critical region.
++ *
++ * @retval ::NRF_SUCCESS
++ */
++__STATIC_INLINE uint32_t sd_nvic_critical_region_enter(uint8_t * p_is_nested_critical_region);
++
++/**@brief Exit critical region.
++ *
++ * @pre Application has entered a critical region using ::sd_nvic_critical_region_enter.
++ * @post If not in a nested critical region, the application interrupts will restored to the state before ::sd_nvic_critical_region_enter was called.
++ *
++ * @param[in] is_nested_critical_region If this is set to 1, the critical region won't be exited. @sa sd_nvic_critical_region_enter.
++ *
++ * @retval ::NRF_SUCCESS
++ */
++__STATIC_INLINE uint32_t sd_nvic_critical_region_exit(uint8_t is_nested_critical_region);
++
++/**@} */
++
++#ifndef SUPPRESS_INLINE_IMPLEMENTATION
++
++__STATIC_INLINE int __sd_nvic_irq_disable(void)
+ {
+   int pm = __get_PRIMASK();
+   __disable_irq();
+   return pm;
+ }
+
+-/**@brief Enables IRQ interrupts globally, including the SoftDevice's interrupts.
+- */
+-static inline void __sd_nvic_irq_enable(void)
++__STATIC_INLINE void __sd_nvic_irq_enable(void)
+ {
+   __enable_irq();
+ }
+
+-/**@brief Checks if IRQn is available to application
+- * @param[in]  IRQn  irq to check
+- *
+- * @retval  1 (true) if the irq to check is available to the application
+- */
+-static inline uint32_t __sd_nvic_app_accessible_irq(IRQn_Type IRQn)
++__STATIC_INLINE uint32_t __sd_nvic_app_accessible_irq(IRQn_Type IRQn)
+ {
+   if (IRQn < 32)
+   {
+
+
+   }
+ }
+
+-/**@brief Checks if IRQn is available to application
+- * @param[in]  priority  priority to check
+- *
+- * @retval  1 (true) if the priority to check is available to the application
+- */
+-static inline uint32_t __sd_nvic_is_app_accessible_priority(uint32_t priority)
++__STATIC_INLINE uint32_t __sd_nvic_is_app_accessible_priority(uint32_t priority)
+ {
+   if(priority >= (1 << __NVIC_PRIO_BITS))
+   {
+
+
+   return 1;
+ }
+
+-/**@} */
+-
+-/**@addtogroup NRF_NVIC_FUNCTIONS SoftDevice NVIC public functions
+- * @{ */
+
+-/**@brief Enable External Interrupt.
+- * @note Corresponds to NVIC_EnableIRQ in CMSIS.
+- *
+- * @pre IRQn is valid and not reserved by the stack.
+- *
+- * @param[in] IRQn See the NVIC_EnableIRQ documentation in CMSIS.
+- *
+- * @retval ::NRF_SUCCESS The interrupt was enabled.
+- * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE The interrupt is not available for the application.
+- * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_PRIORITY_NOT_ALLOWED The interrupt has a priority not available for the application.
+- */
+-static inline uint32_t sd_nvic_EnableIRQ(IRQn_Type IRQn)
++__STATIC_INLINE uint32_t sd_nvic_EnableIRQ(IRQn_Type IRQn)
+ {
+   if (!__sd_nvic_app_accessible_irq(IRQn))
+   {
+
+
+   return NRF_SUCCESS;
+ }
+
+-/**@brief  Disable External Interrupt.
+- * @note Corresponds to NVIC_DisableIRQ in CMSIS.
+- *
+- * @pre IRQn is valid and not reserved by the stack.
+- *
+- * @param[in] IRQn See the NVIC_DisableIRQ documentation in CMSIS.
+- *
+- * @retval ::NRF_SUCCESS The interrupt was disabled.
+- * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE The interrupt is not available for the application.
+- */
+-static inline uint32_t sd_nvic_DisableIRQ(IRQn_Type IRQn)
++__STATIC_INLINE uint32_t sd_nvic_DisableIRQ(IRQn_Type IRQn)
+ {
+   if (!__sd_nvic_app_accessible_irq(IRQn))
+   {
+
+
+   return NRF_SUCCESS;
+ }
+
+-/**@brief  Get Pending Interrupt.
+- * @note Corresponds to NVIC_GetPendingIRQ in CMSIS.
+- *
+- * @pre IRQn is valid and not reserved by the stack.
+- *
+- * @param[in]   IRQn          See the NVIC_GetPendingIRQ documentation in CMSIS.
+- * @param[out]  p_pending_irq Return value from NVIC_GetPendingIRQ.
+- *
+- * @retval ::NRF_SUCCESS The interrupt is available for the application.
+- * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE IRQn is not available for the application.
+- */
+-static inline uint32_t sd_nvic_GetPendingIRQ(IRQn_Type IRQn, uint32_t * p_pending_irq)
++__STATIC_INLINE uint32_t sd_nvic_GetPendingIRQ(IRQn_Type IRQn, uint32_t * p_pending_irq)
+ {
+   if (__sd_nvic_app_accessible_irq(IRQn))
+   {
+
+
+   }
+ }
+
+-/**@brief  Set Pending Interrupt.
+- * @note Corresponds to NVIC_SetPendingIRQ in CMSIS.
+- *
+- * @pre IRQn is valid and not reserved by the stack.
+- *
+- * @param[in] IRQn See the NVIC_SetPendingIRQ documentation in CMSIS.
+- *
+- * @retval ::NRF_SUCCESS The interrupt is set pending.
+- * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE IRQn is not available for the application.
+- */
+-static inline uint32_t sd_nvic_SetPendingIRQ(IRQn_Type IRQn)
++__STATIC_INLINE uint32_t sd_nvic_SetPendingIRQ(IRQn_Type IRQn)
+ {
+   if (__sd_nvic_app_accessible_irq(IRQn))
+   {
+
+
+   }
+ }
+
+-/**@brief  Clear Pending Interrupt.
+- * @note Corresponds to NVIC_ClearPendingIRQ in CMSIS.
+- *
+- * @pre IRQn is valid and not reserved by the stack.
+- *
+- * @param[in] IRQn See the NVIC_ClearPendingIRQ documentation in CMSIS.
+- *
+- * @retval ::NRF_SUCCESS The interrupt pending flag is cleared.
+- * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE IRQn is not available for the application.
+- */
+-static inline uint32_t sd_nvic_ClearPendingIRQ(IRQn_Type IRQn)
++__STATIC_INLINE uint32_t sd_nvic_ClearPendingIRQ(IRQn_Type IRQn)
+ {
+   if (__sd_nvic_app_accessible_irq(IRQn))
+   {
+
+
+   }
+ }
+
+-/**@brief Set Interrupt Priority.
+- * @note Corresponds to NVIC_SetPriority in CMSIS.
+- *
+- * @pre IRQn is valid and not reserved by the stack.
+- * @pre Priority is valid and not reserved by the stack.
+- *
+- * @param[in] IRQn      See the NVIC_SetPriority documentation in CMSIS.
+- * @param[in] priority  A valid IRQ priority for use by the application.
+- *
+- * @retval ::NRF_SUCCESS The interrupt and priority level is available for the application.
+- * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE IRQn is not available for the application.
+- * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_PRIORITY_NOT_ALLOWED The interrupt priority is not available for the application.
+- */
+-static inline uint32_t sd_nvic_SetPriority(IRQn_Type IRQn, uint32_t priority)
++__STATIC_INLINE uint32_t sd_nvic_SetPriority(IRQn_Type IRQn, uint32_t priority)
+ {
+   if (!__sd_nvic_app_accessible_irq(IRQn))
+   {
+
+
+   return NRF_SUCCESS;
+ }
+
+-/**@brief Get Interrupt Priority.
+- * @note Corresponds to NVIC_GetPriority in CMSIS.
+- *
+- * @pre IRQn is valid and not reserved by the stack.
+- *
+- * @param[in]  IRQn         See the NVIC_GetPriority documentation in CMSIS.
+- * @param[out] p_priority   Return value from NVIC_GetPriority.
+- *
+- * @retval ::NRF_SUCCESS The interrupt priority is returned in p_priority.
+- * @retval ::NRF_ERROR_SOC_NVIC_INTERRUPT_NOT_AVAILABLE - IRQn is not available for the application.
+- */
+-static inline uint32_t sd_nvic_GetPriority(IRQn_Type IRQn, uint32_t * p_priority)
++__STATIC_INLINE uint32_t sd_nvic_GetPriority(IRQn_Type IRQn, uint32_t * p_priority)
+ {
+   if (__sd_nvic_app_accessible_irq(IRQn))
+   {
+
+
+   }
+ }
+
+-/**@brief System Reset.
+- * @note Corresponds to NVIC_SystemReset in CMSIS.
+- *
+- * @retval ::NRF_ERROR_SOC_NVIC_SHOULD_NOT_RETURN
+- */
+-static inline uint32_t sd_nvic_SystemReset(void)
++__STATIC_INLINE uint32_t sd_nvic_SystemReset(void)
+ {
+   NVIC_SystemReset();
+   return NRF_ERROR_SOC_NVIC_SHOULD_NOT_RETURN;
+ }
+
+-/**@brief Enters critical region.
+- *
+- * @post Application interrupts will be disabled.
+- * @note sd_nvic_critical_region_enter() and ::sd_nvic_critical_region_exit() must be called in matching pairs inside each
+- * execution context
+- * @sa sd_nvic_critical_region_exit
+- *
+- * @param[out] p_is_nested_critical_region If 1, the application is now in a nested critical region.
+- *
+- * @retval ::NRF_SUCCESS
+- */
+-static inline uint32_t sd_nvic_critical_region_enter(uint8_t * p_is_nested_critical_region)
++__STATIC_INLINE uint32_t sd_nvic_critical_region_enter(uint8_t * p_is_nested_critical_region)
+ {
+   int was_masked = __sd_nvic_irq_disable();
+   if (!nrf_nvic_state.__cr_flag)
+
+
+   return NRF_SUCCESS;
+ }
+
+-/**@brief Exit critical region.
+- *
+- * @pre Application has entered a critical region using ::sd_nvic_critical_region_enter.
+- * @post If not in a nested critical region, the application interrupts will restored to the state before ::sd_nvic_critical_region_enter was called.
+- *
+- * @param[in] is_nested_critical_region If this is set to 1, the critical region won't be exited. @sa sd_nvic_critical_region_enter.
+- *
+- * @retval ::NRF_SUCCESS
+- */
+-static inline uint32_t sd_nvic_critical_region_exit(uint8_t is_nested_critical_region)
++__STATIC_INLINE uint32_t sd_nvic_critical_region_exit(uint8_t is_nested_critical_region)
+ {
+   if (nrf_nvic_state.__cr_flag && (is_nested_critical_region == 0))
+   {
+
+
+   return NRF_SUCCESS;
+ }
+-/**@} */
++
++#endif /* SUPPRESS_INLINE_IMPLEMENTATION */
+
+ #ifdef __cplusplus
+ }
+
+
+ #endif
+
+ /** @brief The major version for the SoftDevice binary distributed with this header file. */
+-#define SD_MAJOR_VERSION  (3)
++#define SD_MAJOR_VERSION  (5)
+
+ /** @brief The minor version for the SoftDevice binary distributed with this header file. */
+ #define SD_MINOR_VERSION  (0)
+
+
+ /**@defgroup NRF_FAULT_IDS Fault ID types
+  * @{ */
+-#define NRF_FAULT_ID_SD_ASSERT    (NRF_FAULT_ID_SD_RANGE_START + 1)           /**< SoftDevice assertion. The info parameter will be set to 0x00000000. */
++#define NRF_FAULT_ID_SD_ASSERT    (NRF_FAULT_ID_SD_RANGE_START  + 1)          /**< SoftDevice assertion. The info parameter is reserved for future used. */
+ #define NRF_FAULT_ID_APP_MEMACC   (NRF_FAULT_ID_APP_RANGE_START + 1)          /**< Application invalid memory access (nRF52 only). The info parameter will contain 0x00000000, in case of SoftDevice RAM
+                                                                               access violation. In case of SoftDevice peripheral register violation the info parameter will contain the sub-region number of PREGION[0], on whose address range the unallowed
+                                                                               write access caused the memory access fault. */
+
+  * When certain unrecoverable errors occur within the application or SoftDevice the fault handler will be called back.
+  * The protocol stack will be in an undefined state when this happens and the only way to recover will be to
+  * perform a reset, using e.g. CMSIS NVIC_SystemReset().
++ * If the application returns from the fault handler the SoftDevice will call NVIC_SystemReset().
+  *
+  * @note This callback is executed in HardFault context, thus SVC functions cannot be called from the fault callback.
+  *
+
+
+  * @param p_clock_lf_cfg Low frequency clock source and accuracy.
+                          If NULL the clock will be configured as an rc source with rc_ctiv = 16 and .rc_temp_ctiv = 2
+                          In the case of XTAL source, the PPM accuracy of the chosen clock source must be greater than or equal to the actual characteristics of your XTAL clock.
+- * @param fault_handler Callback to be invoked in case of fault.
++ * @param fault_handler Callback to be invoked in case of fault, cannot be NULL.
+  *
+  * @retval ::NRF_SUCCESS
++ * @retval ::NRF_ERROR_INVALID_ADDR  Invalid or NULL pointer supplied.
+  * @retval ::NRF_ERROR_INVALID_STATE SoftDevice is already enabled, and the clock source and fault handler cannot be updated.
+  * @retval ::NRF_ERROR_SDM_INCORRECT_INTERRUPT_CONFIGURATION SoftDevice interrupt is already enabled, or an enabled interrupt has an illegal priority level.
+  * @retval ::NRF_ERROR_SDM_LFCLK_SOURCE_UNKNOWN Unknown low frequency clock source selected.
+
+
+ #define SVCALL(number, return_type, signature) return_type __svc(number) signature
+ #elif defined (__GNUC__)
+ #ifdef __cplusplus
+-#define GCC_CAST_CPP (uint8_t)
++#define GCC_CAST_CPP (uint16_t)
+ #else
+ #define GCC_CAST_CPP
+ #endif
