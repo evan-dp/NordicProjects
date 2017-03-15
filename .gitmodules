@@ -1,0 +1,3 @@
+[submodule "Nordic_SDKs"]
+	path = Nordic_SDKs
+	url = https://github.com/evanhumon/Nordic_SDKs.git
