@@ -1,3 +1,6 @@
 [submodule "Nordic_SDKs"]
 	path = NordicSDKs
 	url = https://github.com/evan-dp/NordicSDKs.git
+[submodule "NordicSoftDevices"]
+	path = NordicSoftDevices
+	url = https://github.com/evan-dp/NordicSoftDevices.git
